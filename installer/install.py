@@ -1,146 +1,234 @@
 """
-DiscoFlow installer — bundled as a standalone .exe via PyInstaller.
+DiscoFlow — plug-and-play installer.
 
-Bundled assets (via spec datas):
-  - assets/mod/          → UE4SS mod files
-  - assets/backend.exe   → compiled backend (also PyInstaller)
+Steps (all automatic):
+  1. Find Dead as Disco via Steam registry
+  2. Download latest UE4SS from GitHub releases
+  3. Extract UE4SS into game's Binaries/Win64
+  4. Install DiscoFlow mod into UE4SS Mods folder
+  5. Install backend to %LOCALAPPDATA%\DiscoFlow
+  6. Add backend to Windows Startup
 """
 
 import os
 import sys
+import io
+import json
 import shutil
-import subprocess
+import zipfile
 import threading
+import urllib.request
+import winreg
 import tkinter as tk
 from tkinter import ttk, messagebox
-import winreg
 
 
 # ── asset resolution ──────────────────────────────────────────────────────────
 
 def _asset(rel):
-    """Resolve bundled asset path (works both frozen and in dev)."""
     base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base, "assets", rel)
 
 
-# ── game detection ────────────────────────────────────────────────────────────
-
-STEAM_REGISTRY_KEYS = [
-    r"SOFTWARE\WOW6432Node\Valve\Steam",
-    r"SOFTWARE\Valve\Steam",
-]
+# ── Steam / game detection ────────────────────────────────────────────────────
 
 def find_steam_root():
-    for key_path in STEAM_REGISTRY_KEYS:
+    for hive, key_path in [
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Valve\Steam"),
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Valve\Steam"),
+        (winreg.HKEY_CURRENT_USER,  r"SOFTWARE\Valve\Steam"),
+    ]:
         try:
-            key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path)
+            key = winreg.OpenKey(hive, key_path)
             val, _ = winreg.QueryValueEx(key, "InstallPath")
             return val
         except Exception:
             pass
     return None
 
+
+def find_all_steam_libraries(steam_root):
+    """Return all Steam library paths, including secondary ones."""
+    libraries = [os.path.join(steam_root, "steamapps")]
+    vdf = os.path.join(steam_root, "steamapps", "libraryfolders.vdf")
+    if not os.path.exists(vdf):
+        return libraries
+    with open(vdf, encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            line = line.strip()
+            if '"path"' in line.lower():
+                parts = line.split('"')
+                if len(parts) >= 4:
+                    p = parts[3].replace("\\\\", "\\")
+                    lib = os.path.join(p, "steamapps")
+                    if os.path.exists(lib):
+                        libraries.append(lib)
+    return libraries
+
+
 def find_game_path():
     steam_root = find_steam_root()
     if not steam_root:
         return None
-    candidate = os.path.join(steam_root, "steamapps", "common", "Dead as Disco")
-    return candidate if os.path.exists(candidate) else None
-
-def find_ue4ss_dir(game_path):
-    for root, _, files in os.walk(game_path):
-        if "ue4ss.dll" in [f.lower() for f in files]:
-            return root
+    for lib in find_all_steam_libraries(steam_root):
+        candidate = os.path.join(lib, "common", "Dead as Disco")
+        if os.path.exists(candidate):
+            return candidate
     return None
 
 
-# ── installation steps ────────────────────────────────────────────────────────
+def find_game_exe(game_path):
+    for root, _, files in os.walk(game_path):
+        for f in files:
+            if f.lower().endswith(".exe") and "uninstall" not in f.lower():
+                return root
+    return None
 
-def install_mod(ue4ss_dir, log):
-    dest = os.path.join(ue4ss_dir, "Mods", "DiscoFlow")
-    log(f"Installing mod → {dest}")
+
+# ── UE4SS download ────────────────────────────────────────────────────────────
+
+UE4SS_API = "https://api.github.com/repos/UE4SS-RE/RE-UE4SS/releases/latest"
+
+
+def fetch_ue4ss_download_url():
+    req = urllib.request.Request(UE4SS_API,
+                                 headers={"User-Agent": "DiscoFlow-Installer"})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        data = json.loads(resp.read())
+
+    assets = data.get("assets", [])
+    # prefer the main zip (not debug symbols, not source)
+    for asset in assets:
+        name = asset["name"].lower()
+        if name.endswith(".zip") and "debug" not in name and "source" not in name:
+            return asset["browser_download_url"], data["tag_name"]
+
+    raise RuntimeError("Could not find a UE4SS zip in the latest release assets.")
+
+
+def download_bytes(url, progress_cb=None):
+    req = urllib.request.Request(url, headers={"User-Agent": "DiscoFlow-Installer"})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        total = int(resp.headers.get("Content-Length", 0))
+        buf = io.BytesIO()
+        downloaded = 0
+        chunk = 65536
+        while True:
+            data = resp.read(chunk)
+            if not data:
+                break
+            buf.write(data)
+            downloaded += len(data)
+            if progress_cb and total:
+                progress_cb(downloaded / total)
+    buf.seek(0)
+    return buf
+
+
+def install_ue4ss(binaries_dir, progress_cb=None):
+    url, tag = fetch_ue4ss_download_url()
+    buf = download_bytes(url, progress_cb)
+    with zipfile.ZipFile(buf) as zf:
+        zf.extractall(binaries_dir)
+    return tag
+
+
+# ── DiscoFlow mod + backend ───────────────────────────────────────────────────
+
+def install_mod(binaries_dir):
+    dest = os.path.join(binaries_dir, "Mods", "DiscoFlow")
     if os.path.exists(dest):
         shutil.rmtree(dest)
     shutil.copytree(_asset("mod"), dest)
 
-def install_backend(log):
+
+def install_backend():
     dest = os.path.join(os.getenv("LOCALAPPDATA"), "DiscoFlow")
     os.makedirs(dest, exist_ok=True)
 
     backend_src = _asset("backend.exe")
     backend_dst = os.path.join(dest, "discoflow-backend.exe")
-    log(f"Installing backend → {backend_dst}")
     shutil.copy2(backend_src, backend_dst)
 
-    # Windows Startup shortcut (.bat that launches the backend)
     startup = os.path.join(
         os.getenv("APPDATA"),
-        "Microsoft", "Windows", "Start Menu", "Programs", "Startup"
+        "Microsoft", "Windows", "Start Menu", "Programs", "Startup",
     )
-    bat = os.path.join(startup, "DiscoFlow.bat")
-    log("Adding to Windows Startup...")
-    with open(bat, "w") as f:
+    with open(os.path.join(startup, "DiscoFlow.bat"), "w") as f:
         f.write(f'@echo off\nstart /min "" "{backend_dst}"\n')
+
+    # start the backend right now so the user doesn't need to reboot
+    import subprocess
+    subprocess.Popen([backend_dst], creationflags=subprocess.CREATE_NO_WINDOW)
 
 
 # ── UI ────────────────────────────────────────────────────────────────────────
 
+STEPS = [
+    "Locating Dead as Disco...",
+    "Downloading UE4SS...",
+    "Installing UE4SS...",
+    "Installing DiscoFlow mod...",
+    "Installing backend...",
+    "Done!",
+]
+
+
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("DiscoFlow Installer")
+        self.title("DiscoFlow")
         self.resizable(False, False)
         self.configure(bg="#0f0f0f")
-        self._center(500, 340)
+        self._center(480, 320)
         self._build()
 
     def _center(self, w, h):
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
-        self.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
+        self.geometry(f"{w}x{h}+{(sw - w) // 2}+{(sh - h) // 2}")
 
     def _build(self):
         PAD = {"padx": 28, "pady": 0}
 
         tk.Label(self, text="DiscoFlow", font=("Segoe UI", 22, "bold"),
-                 fg="#e8d5ff", bg="#0f0f0f").pack(pady=(32, 4))
+                 fg="#e8d5ff", bg="#0f0f0f").pack(pady=(28, 4))
         tk.Label(self, text="Dead as Disco · Music Integration Mod",
-                 font=("Segoe UI", 10), fg="#888", bg="#0f0f0f").pack()
+                 font=("Segoe UI", 10), fg="#666", bg="#0f0f0f").pack()
 
-        tk.Frame(self, height=1, bg="#2a2a2a").pack(fill="x", pady=20, **PAD)
+        tk.Frame(self, height=1, bg="#2a2a2a").pack(fill="x", pady=18, **PAD)
 
-        self.status = tk.Label(self, text="Ready to install.", font=("Segoe UI", 10),
-                               fg="#ccc", bg="#0f0f0f", wraplength=440, justify="left")
+        self.status_var = tk.StringVar(value="Ready.")
+        self.status = tk.Label(self, textvariable=self.status_var,
+                               font=("Segoe UI", 10), fg="#ccc", bg="#0f0f0f",
+                               wraplength=420, justify="left")
         self.status.pack(anchor="w", **PAD)
 
-        self.progress = ttk.Progressbar(self, length=444, mode="determinate")
         style = ttk.Style(self)
         style.theme_use("clam")
         style.configure("TProgressbar", troughcolor="#1e1e1e",
-                        background="#a855f7", bordercolor="#0f0f0f")
+                        background="#a855f7", bordercolor="#0f0f0f",
+                        lightcolor="#a855f7", darkcolor="#a855f7")
+
+        self.progress = ttk.Progressbar(self, length=424, maximum=100,
+                                        mode="determinate")
         self.progress.pack(pady=(10, 0), **PAD)
 
-        self.log_box = tk.Text(self, height=5, bg="#1a1a1a", fg="#666",
-                               font=("Consolas", 8), bd=0, state="disabled",
-                               wrap="word", relief="flat")
-        self.log_box.pack(fill="x", pady=(10, 0), **PAD)
+        self.sub_progress = ttk.Progressbar(self, length=424, maximum=100,
+                                            mode="determinate")
+        self.sub_progress.pack(pady=(4, 0), **PAD)
+        self.sub_progress.pack_forget()  # hidden until UE4SS download
 
-        self.btn = tk.Button(self, text="Install", font=("Segoe UI", 11, "bold"),
-                             bg="#7c3aed", fg="white", activebackground="#6d28d9",
-                             activeforeground="white", bd=0, padx=20, pady=8,
-                             cursor="hand2", command=self._start)
-        self.btn.pack(pady=(20, 0))
+        self.btn = tk.Button(
+            self, text="Install", font=("Segoe UI", 11, "bold"),
+            bg="#7c3aed", fg="white", activebackground="#6d28d9",
+            activeforeground="white", bd=0, padx=20, pady=8,
+            cursor="hand2", command=self._start,
+        )
+        self.btn.pack(pady=(24, 0))
 
-    def _log(self, msg):
-        self.log_box.configure(state="normal")
-        self.log_box.insert("end", msg + "\n")
-        self.log_box.see("end")
-        self.log_box.configure(state="disabled")
-        self.status.configure(text=msg)
-        self.update_idletasks()
-
-    def _set_progress(self, val):
-        self.progress["value"] = val
+    def _set(self, msg, pct):
+        self.status_var.set(msg)
+        self.progress["value"] = pct
         self.update_idletasks()
 
     def _start(self):
@@ -149,49 +237,62 @@ class App(tk.Tk):
 
     def _run(self):
         try:
-            self._log("Looking for Dead as Disco...")
-            self._set_progress(10)
-
+            # Step 1 — find game
+            self._set(STEPS[0], 5)
             game_path = find_game_path()
             if not game_path:
                 raise RuntimeError(
-                    "Dead as Disco not found via Steam.\n"
-                    "Make sure the game is installed and Steam has run at least once."
+                    "Dead as Disco was not found.\n\n"
+                    "Make sure the game is installed on Steam and that Steam "
+                    "has launched at least once."
                 )
 
-            self._log(f"Found: {game_path}")
-            self._set_progress(25)
-
-            self._log("Looking for UE4SS...")
-            ue4ss_dir = find_ue4ss_dir(game_path)
-            if not ue4ss_dir:
+            binaries_dir = find_game_exe(game_path)
+            if not binaries_dir:
                 raise RuntimeError(
-                    "UE4SS not found in the game folder.\n\n"
-                    "Download it from:\n"
-                    "https://github.com/UE4SS-RE/RE-UE4SS/releases\n\n"
-                    "Extract it into:\n"
-                    "Dead as Disco/Binaries/Win64/\n\n"
-                    "Then run this installer again."
+                    f"Could not locate the game executable inside:\n{game_path}"
                 )
 
-            self._set_progress(45)
-            install_mod(ue4ss_dir, self._log)
-            self._set_progress(70)
-            install_backend(self._log)
-            self._set_progress(100)
+            # Step 2 — download UE4SS
+            self._set(STEPS[1], 20)
+            self.sub_progress.pack(pady=(4, 0), padx=28)
 
-            self.status.configure(text="Installation complete!", fg="#a855f7")
-            self._log("Done.")
+            def dl_progress(fraction):
+                self.sub_progress["value"] = fraction * 100
+                self.update_idletasks()
+
+            tag = install_ue4ss(binaries_dir, dl_progress)
+
+            self.sub_progress.pack_forget()
+
+            # Step 3 (extract happened inside install_ue4ss)
+            self._set(f"UE4SS {tag} installed.", 55)
+
+            # Step 4 — DiscoFlow mod
+            self._set(STEPS[3], 70)
+            install_mod(binaries_dir)
+
+            # Step 5 — backend
+            self._set(STEPS[4], 85)
+            install_backend()
+
+            # Done
+            self._set(STEPS[5], 100)
+            self.status.configure(fg="#a855f7")
+            self.btn.configure(
+                state="normal", text="Close", bg="#1e1e1e",
+                activebackground="#2a2a2a", command=self.destroy,
+            )
             messagebox.showinfo(
                 "DiscoFlow",
-                "Installation complete!\n\nLaunch Dead as Disco and press F6 in Free Play."
+                "All done!\n\nLaunch Dead as Disco and press F6 in Free Play.",
             )
-            self.btn.configure(state="normal", text="Close", command=self.destroy)
 
         except Exception as e:
-            self.status.configure(text="Installation failed.", fg="#f87171")
-            self._log(f"Error: {e}")
-            messagebox.showerror("DiscoFlow", str(e))
+            self.status_var.set(f"Error: {e}")
+            self.status.configure(fg="#f87171")
+            self.sub_progress.pack_forget()
+            messagebox.showerror("DiscoFlow — Installation failed", str(e))
             self.btn.configure(state="normal")
 
 

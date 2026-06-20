@@ -35,29 +35,20 @@ The overlay opens with **F6** in the Free Play screen.
 ## Requirements
 
 - Dead as Disco (Steam, Early Access)
-- [UE4SS](https://github.com/UE4SS-RE/RE-UE4SS/releases) installed in the game's `Binaries/Win64` folder
+- Windows 10 or later
 
-No Python required — everything is bundled in the installer.
+No Python, no UE4SS, no manual steps — everything is bundled in the installer.
 
 ## Installation
 
-**1. Install UE4SS**
+Download `DiscoFlowInstaller.exe` from the [Releases](../../releases/latest) page and run it.
 
-Download the latest release from the [UE4SS releases page](https://github.com/UE4SS-RE/RE-UE4SS/releases) and extract it into:
-
-```
-Dead as Disco/Binaries/Win64/
-```
-
-**2. Download and run DiscoFlowInstaller.exe**
-
-Grab the latest `DiscoFlowInstaller.exe` from the [Releases](../../releases/latest) page and run it.
-
-The installer will:
-- Locate Dead as Disco automatically via the Steam registry
-- Copy the mod into the UE4SS Mods folder
-- Install the backend to `%LOCALAPPDATA%\DiscoFlow`
-- Add the backend to Windows Startup so it runs automatically
+The installer automatically:
+1. Locates Dead as Disco via the Steam registry (including secondary Steam libraries)
+2. Downloads the latest UE4SS from GitHub and extracts it into the game folder
+3. Installs the DiscoFlow mod into the UE4SS Mods folder
+4. Installs the backend to `%LOCALAPPDATA%\DiscoFlow` and starts it immediately
+5. Adds the backend to Windows Startup
 
 **3. Spotify setup (optional)**
 
