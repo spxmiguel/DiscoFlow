@@ -45,12 +45,13 @@ def main():
     )
 
     print("\nStep 3 — Building installer executable...")
+    spec = os.path.join(ROOT, "installer", "DiscoFlow.spec")
     run(
         *pyinstaller,
         "--clean",
         "--distpath", "dist",
         "--workpath", "build/installer",
-        "installer/DiscoFlow.spec",
+        spec,
     )
 
     out = os.path.join(ROOT, "dist", "DiscoFlowInstaller.exe")
