@@ -67,9 +67,9 @@ Open Dead as Disco, go to Free Play, and press **F6**. The DiscoFlow overlay app
 
 ## Usage
 
-1. Press **F6** to open the overlay.
-2. Select your streaming service from the list.
-3. Search for a song or browse your playlists (Spotify).
+1. Launch Dead as Disco and go to **Free Play**.
+2. The DiscoFlow panel opens automatically.
+3. Select your streaming service, search or browse playlists.
 4. Click a track — BPM is set and the song opens in your streaming app.
 5. Start playing.
 
