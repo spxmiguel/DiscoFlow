@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+.venv/
+venv/
+
+# Spotify token (contains sensitive refresh token)
+backend/.spotify_token.json
+
+# IPC runtime files
+*.json
+
+# Build artifacts
+dist/
+build/
+*.spec
+
+# OS
+.DS_Store
+Thumbs.db
