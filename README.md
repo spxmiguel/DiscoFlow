@@ -37,18 +37,19 @@ The overlay opens with **F6** in the Free Play screen.
 - Dead as Disco (Steam, Early Access)
 - Windows 10 or later
 
-No Python, no UE4SS, no manual steps — everything is bundled in the installer.
+No Python, no UE4SS, no manual steps.
 
 ## Installation
 
-Download `DiscoFlowInstaller.exe` from the [Releases](../../releases/latest) page and run it.
+Download `install.bat` from the [Releases](../../releases/latest) page, right-click and run as administrator.
 
 The installer automatically:
 1. Locates Dead as Disco via the Steam registry (including secondary Steam libraries)
 2. Downloads the latest UE4SS from GitHub and extracts it into the game folder
-3. Installs the DiscoFlow mod into the UE4SS Mods folder
-4. Installs the backend to `%LOCALAPPDATA%\DiscoFlow` and starts it immediately
-5. Adds the backend to Windows Startup
+3. Downloads and installs the DiscoFlow mod
+4. Downloads the backend to `%LOCALAPPDATA%\DiscoFlow`
+
+The backend starts automatically every time you open Dead as Disco — no Windows Startup entry, no tray icon, nothing running in the background when you're not playing.
 
 **3. Spotify setup (optional)**
 
@@ -98,17 +99,11 @@ python %LOCALAPPDATA%\DiscoFlow\backend\main.py
 ```bash
 git clone https://github.com/spxmiguel/DiscoFlow
 cd DiscoFlow
-python installer/build.py
-```
-
-Output: `dist/DiscoFlowInstaller.exe`
-
-To run the backend directly during development:
-
-```bash
 pip install -r backend/requirements.txt
-python backend/main.py
+python -m PyInstaller --onefile --name discoflow-backend --noconsole backend/main.py
 ```
+
+Output: `dist/discoflow-backend.exe`
 
 The IPC files are written to `%LOCALAPPDATA%\DiscoFlow\`. The Lua mod reads `state.json` and `response.json` from the same folder.
 
@@ -116,6 +111,7 @@ The IPC files are written to `%LOCALAPPDATA%\DiscoFlow\`. The Lua mod reads `sta
 
 ```
 DiscoFlow/
+├── install.bat          one-click installer for end users
 ├── backend/
 │   ├── main.py          entry point, request router
 │   ├── ipc.py           file-based IPC with the Lua mod
@@ -125,22 +121,16 @@ DiscoFlow/
 │   ├── local_files.py   local file scanner + librosa BPM detection
 │   ├── bpm.py           BPM clamping and formatting utilities
 │   └── requirements.txt
-├── mod/
-│   └── Scripts/
-│       ├── main.lua     UE4SS entry point, key bindings, BP hooks
-│       ├── ui.lua       ImGui overlay — all screens and interactions
-│       └── ipc.lua      file-based IPC client + minimal JSON codec
-├── installer/
-│   ├── install.py       tkinter GUI installer (bundled by PyInstaller)
-│   ├── DiscoFlow.spec   PyInstaller spec — bundles mod + backend.exe
-│   └── build.py         build script → dist/DiscoFlowInstaller.exe
-└── README.md
+└── mod/
+    └── Scripts/
+        ├── main.lua     UE4SS entry point — auto-starts backend, hooks Free Play menu
+        ├── ui.lua       ImGui overlay — all screens and interactions
+        └── ipc.lua      file-based IPC client + minimal JSON codec
 ```
 
 ## Tech Stack
 
-- Python 3.11 (bundled — no install required)
-- PyInstaller (single .exe packaging)
+- Python 3.11 (compiled into backend.exe via PyInstaller — no install required)
 - UE4SS (Lua scripting + ImGui for Unreal Engine games)
 - Spotify Web API
 - Deezer Public API

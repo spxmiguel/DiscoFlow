@@ -19,19 +19,36 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Build DiscoFlowInstaller.exe
-        run: python installer/build.py
+      - name: Install build dependencies
+        run: pip install --quiet pyinstaller psutil librosa
+
+      - name: Build discoflow-backend.exe
+        run: |
+          python -m PyInstaller `
+            --onefile `
+            --name discoflow-backend `
+            --distpath dist `
+            --workpath build `
+            --noconsole `
+            backend/main.py
+
+      - name: Package mod.zip
+        run: Compress-Archive -Path mod\* -DestinationPath dist\mod.zip
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/DiscoFlowInstaller.exe
+          files: |
+            dist/discoflow-backend.exe
+            dist/mod.zip
+            install.bat
           body: |
             ## Installation
 
-            1. Download `DiscoFlowInstaller.exe` below.
-            2. Make sure [UE4SS](https://github.com/UE4SS-RE/RE-UE4SS/releases) is installed in Dead as Disco's `Binaries/Win64/` folder.
-            3. Run the installer.
-            4. Launch Dead as Disco and press **F6** in Free Play.
+            1. Download `install.bat` below.
+            2. Right-click → **Run as administrator**.
+            3. Launch Dead as Disco. DiscoFlow starts automatically.
 
-            See the [README](https://github.com/${{ github.repository }}#readme) for Spotify setup and usage.
+            No Python, no manual steps, no extra downloads needed.
+
+            See the [README](https://github.com/${{ github.repository }}#readme) for Spotify setup.

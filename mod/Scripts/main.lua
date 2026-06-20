@@ -1,29 +1,46 @@
 -- DiscoFlow — Dead as Disco music integration mod
--- Opens automatically when the Free Play menu is loaded. No key required.
+-- Backend starts automatically when the game launches. No config needed.
 
 local ui = require("Scripts.ui")
 
--- Hook the Free Play widget construction so the overlay opens the moment
--- the player enters that screen. UE4SS calls this whenever a new object
--- of the matching class is created in the world.
+-- ── auto-start backend ────────────────────────────────────────────────────────
+
+local BACKEND_EXE = (os.getenv("LOCALAPPDATA") or "") .. "\\DiscoFlow\\discoflow-backend.exe"
+
+local function is_backend_running()
+    local handle = io.popen('tasklist /FI "IMAGENAME eq discoflow-backend.exe" 2>NUL')
+    if not handle then return false end
+    local out = handle:read("*a")
+    handle:close()
+    return out:find("discoflow%-backend%.exe") ~= nil
+end
+
+local function start_backend()
+    if not is_backend_running() then
+        os.execute('start /min "" "' .. BACKEND_EXE .. '"')
+    end
+end
+
+start_backend()
+
+-- ── Free Play hooks ───────────────────────────────────────────────────────────
+
 NotifyOnNewObject("/Game/UI/Menus/FreePlay/BP_FreePlayMenu.BP_FreePlayMenu_C",
     function(obj)
-        -- Small delay so the game finishes building the widget before we draw
         ExecuteWithDelay(200, function()
             ui.show()
         end)
     end
 )
 
--- Hide when the player leaves Free Play (widget gets destroyed / GC'd)
--- We hook Destruct on the same class.
 HookUObjectFinalizer("/Game/UI/Menus/FreePlay/BP_FreePlayMenu.BP_FreePlayMenu_C",
     function(obj)
         ui.hide()
     end
 )
 
--- ImGui render loop — only draws when ui.visible is true
+-- ── ImGui render loop ─────────────────────────────────────────────────────────
+
 RegisterImGuiCallback(function()
     ui.draw()
 end)
