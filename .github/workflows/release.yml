@@ -20,7 +20,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install build dependencies
-        run: pip install --quiet pyinstaller psutil librosa
+        run: pip install --quiet pyinstaller psutil librosa mutagen soundfile
 
       - name: Build discoflow-backend.exe
         run: |
@@ -31,6 +31,17 @@ jobs:
             --workpath build `
             --noconsole `
             backend/main.py
+
+      - name: Build discoflow-manual.exe
+        run: |
+          python -m PyInstaller `
+            --onefile `
+            --name discoflow-manual `
+            --distpath dist `
+            --workpath build `
+            --noconsole `
+            --windowed `
+            manual_app/main.py
 
       - name: Package mod.zip
         run: |
@@ -48,6 +59,7 @@ jobs:
         with:
           files: |
             dist/discoflow-backend.exe
+            dist/discoflow-manual.exe
             dist/mod.zip
             install.bat
           body: |

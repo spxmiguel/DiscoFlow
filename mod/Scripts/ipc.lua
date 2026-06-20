@@ -44,6 +44,13 @@ function M.read_state()
     return ok and data or nil
 end
 
+function M.read_library()
+    local raw = read_json(BASE .. "library.json")
+    if not raw then return nil end
+    local ok, data = pcall(M.decode, raw)
+    return ok and data or nil
+end
+
 -- minimal JSON encode/decode (numbers, strings, arrays, objects, booleans)
 function M.encode(val)
     local t = type(val)

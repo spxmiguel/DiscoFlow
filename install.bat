@@ -87,20 +87,60 @@ if (Test-Path (Join-Path $ue4ssDir 'UE4SS.dll')) {
     Write-OK "UE4SS installed to Pagoda\Binaries\Win64\ue4ss\"
 }
 
-# ── 3. Fetch DiscoFlow release ────────────────────────────────────────────────
-Write-Step 'Fetching DiscoFlow release...'
-$dfApi        = Invoke-RestMethod "https://api.github.com/repos/$REPO/releases/latest" -Headers $headers
-$backendAsset = $dfApi.assets | Where-Object { $_.name -eq 'discoflow-backend.exe' } | Select-Object -First 1
-$modAsset     = $dfApi.assets | Where-Object { $_.name -eq 'mod.zip' }              | Select-Object -First 1
-if (-not $backendAsset) { Write-Fail "discoflow-backend.exe not found in release $($dfApi.tag_name)" }
-if (-not $modAsset)     { Write-Fail "mod.zip not found in release $($dfApi.tag_name)" }
+# ── 3. Escolha dos componentes ────────────────────────────────────────────────
+Write-Host ''
+Write-Host '  Componentes disponiveis:' -ForegroundColor Yellow
+Write-Host '    [1] Biblioteca Manual  — app no desktop, adicione musicas do seu PC'
+Write-Host '    [2] Automatico         — Spotify / Deezer (requer app instalado)'
+Write-Host '    [3] Ambos              — recomendado' -ForegroundColor Green
+Write-Host ''
+$choice = Read-Host '  Escolha (1 / 2 / 3) [padrao: 3]'
+if ($choice -eq '') { $choice = '3' }
+if ($choice -notin @('1','2','3')) { Write-Fail "Opcao invalida: $choice" }
 
-# ── 4. Install backend ────────────────────────────────────────────────────────
-Write-Step 'Installing backend...'
+$installManual  = $choice -in @('1','3')
+$installBackend = $choice -in @('2','3')
+
+Write-Host ''
+if ($installManual)  { Write-OK 'Biblioteca Manual sera instalada' }
+if ($installBackend) { Write-OK 'Integracao automatica sera instalada' }
+
+# ── 4. Fetch DiscoFlow release ────────────────────────────────────────────────
+Write-Step 'Buscando release DiscoFlow...'
+$dfApi    = Invoke-RestMethod "https://api.github.com/repos/$REPO/releases/latest" -Headers $headers
+$modAsset = $dfApi.assets | Where-Object { $_.name -eq 'mod.zip' } | Select-Object -First 1
+if (-not $modAsset) { Write-Fail "mod.zip nao encontrado na release $($dfApi.tag_name)" }
+
 New-Item -ItemType Directory -Path $DEST_DIR -Force | Out-Null
-$backendDst = Join-Path $DEST_DIR 'discoflow-backend.exe'
-Invoke-WebRequest -Uri $backendAsset.browser_download_url -OutFile $backendDst -Headers $headers
-Write-OK "Backend: $backendDst"
+
+# ── 4a. Install manual app ────────────────────────────────────────────────────
+if ($installManual) {
+    $manualAsset = $dfApi.assets | Where-Object { $_.name -eq 'discoflow-manual.exe' } | Select-Object -First 1
+    if (-not $manualAsset) { Write-Fail "discoflow-manual.exe nao encontrado na release $($dfApi.tag_name)" }
+    Write-Step 'Instalando app Biblioteca Manual...'
+    $manualDst = Join-Path $DEST_DIR 'discoflow-manual.exe'
+    Invoke-WebRequest -Uri $manualAsset.browser_download_url -OutFile $manualDst -Headers $headers
+    Write-OK "Manual app: $manualDst"
+
+    # create desktop shortcut
+    try {
+        $wsh  = New-Object -ComObject WScript.Shell
+        $link = $wsh.CreateShortcut([System.IO.Path]::Combine([Environment]::GetFolderPath('Desktop'), 'DiscoFlow.lnk'))
+        $link.TargetPath = $manualDst
+        $link.Save()
+        Write-OK 'Atalho criado na Area de Trabalho'
+    } catch {}
+}
+
+# ── 4b. Install streaming backend ─────────────────────────────────────────────
+if ($installBackend) {
+    $backendAsset = $dfApi.assets | Where-Object { $_.name -eq 'discoflow-backend.exe' } | Select-Object -First 1
+    if (-not $backendAsset) { Write-Fail "discoflow-backend.exe nao encontrado na release $($dfApi.tag_name)" }
+    Write-Step 'Instalando backend de streaming...'
+    $backendDst = Join-Path $DEST_DIR 'discoflow-backend.exe'
+    Invoke-WebRequest -Uri $backendAsset.browser_download_url -OutFile $backendDst -Headers $headers
+    Write-OK "Backend: $backendDst"
+}
 
 # ── 5. Install mod + UE4SS signatures ────────────────────────────────────────
 Write-Step 'Installing mod...'
@@ -128,6 +168,13 @@ Write-OK "Signatures: $sigDir"
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 Write-Host ''
-Write-Host '  All done!' -ForegroundColor Green
-Write-Host '  Launch Dead as Disco. DiscoFlow opens automatically in Free Play.' -ForegroundColor White
+Write-Host '  Tudo pronto!' -ForegroundColor Green
+if ($installManual) {
+    Write-Host '  1. Abra o DiscoFlow pelo atalho na Area de Trabalho.' -ForegroundColor White
+    Write-Host '     Adicione musicas e feche o app.' -ForegroundColor White
+}
+if ($installBackend) {
+    Write-Host '  - Abra o Spotify ou Deezer antes de iniciar o jogo.' -ForegroundColor White
+}
+Write-Host '  - Inicie Dead as Disco. No Free Play, o menu DiscoFlow aparece automaticamente.' -ForegroundColor White
 Write-Host ''

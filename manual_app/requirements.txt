@@ -1,0 +1,5 @@
+mutagen
+librosa
+soundfile
+numpy
+pillow

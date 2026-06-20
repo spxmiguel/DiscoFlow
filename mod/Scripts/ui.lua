@@ -18,6 +18,45 @@ local function set_status(msg)
     state.status_msg = msg
 end
 
+local function fmt_duration(ms)
+    if not ms or ms == 0 then return "" end
+    local s = math.floor(ms / 1000)
+    return string.format("%d:%02d", math.floor(s / 60), s % 60)
+end
+
+local function clamp_bpm(bpm)
+    if not bpm or bpm <= 0 then return nil end
+    while bpm < 80  do bpm = bpm * 2 end
+    while bpm > 200 do bpm = bpm / 2 end
+    return math.floor(bpm)
+end
+
+local function has_library()
+    local lib = ipc.read_library()
+    return lib and lib.tracks and #lib.tracks > 0
+end
+
+local function load_library()
+    local lib = ipc.read_library()
+    if not lib or not lib.tracks or #lib.tracks == 0 then
+        set_status("Biblioteca vazia — abra o app DiscoFlow para adicionar músicas.")
+        return
+    end
+    state.tracks = {}
+    for _, t in ipairs(lib.tracks) do
+        state.tracks[#state.tracks + 1] = {
+            name     = t.title  or "Desconhecido",
+            artist   = t.artist or "Desconhecido",
+            bpm      = clamp_bpm(t.bpm),
+            duration = fmt_duration(t.duration_ms),
+            path     = t.path,
+            source   = "local",
+        }
+    end
+    state.screen = "results"
+    set_status(string.format("%d faixas na biblioteca", #state.tracks))
+end
+
 local function load_services()
     set_status("Detecting streaming apps...")
     ipc.send({ action = "detect" }, function(resp)
@@ -62,13 +101,15 @@ end
 
 local function play_track(track)
     if not track.bpm then
-        set_status("BPM unavailable for this track.")
+        set_status("BPM nao disponivel para esta faixa.")
         return
     end
 
-    -- open in streaming app
-    if state.service == "Spotify" and track.uri then
-        ipc.send({ action = "spotify_play", uri = track.uri }, function() end)
+    -- open in streaming app (streaming sources only)
+    if track.source ~= "local" then
+        if state.service == "Spotify" and track.uri then
+            ipc.send({ action = "spotify_play", uri = track.uri }, function() end)
+        end
     end
 
     -- inject BPM into the game's song config
@@ -141,19 +182,31 @@ function M.draw()
 end
 
 function M.draw_services()
-    ImGui.Text("Select a streaming service:")
+    ImGui.Text("Selecione a fonte de música:")
     ImGui.Spacing()
 
-    if #state.services == 0 then
-        ImGui.TextDisabled("No streaming apps detected.")
-        ImGui.TextDisabled("Install Spotify, Apple Music, Tidal, or Deezer.")
+    -- Minha Biblioteca (local, always shown)
+    if has_library() then
+        if ImGui.Button("Minha Biblioteca  (app DiscoFlow)", 480, 36) then
+            state.service = "Minha Biblioteca"
+            load_library()
+        end
+        ImGui.Spacing()
+    else
+        ImGui.TextDisabled("App DiscoFlow nao instalado — biblioteca vazia.")
         ImGui.Spacing()
     end
 
+    -- streaming services (require backend)
+    if #state.services == 0 then
+        ImGui.TextDisabled("Nenhum app de streaming detectado.")
+        ImGui.TextDisabled("Instale Spotify ou Deezer, ou use a Biblioteca Manual.")
+        ImGui.Spacing()
+    end
     for _, svc in ipairs(state.services) do
         local label = svc.name
         if not svc.running and svc.name ~= "Local Files" then
-            label = label .. " (not running)"
+            label = label .. " (nao iniciado)"
         end
         if ImGui.Button(label, 480, 36) then
             state.service = svc.name
