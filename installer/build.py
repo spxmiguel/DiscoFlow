@@ -19,7 +19,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def run(*args):
-    print(f"\n$ {' '.join(str(a) for a in args)}\n")
+    print(f"\n> {' '.join(str(a) for a in args)}\n")
     subprocess.run(args, check=True, cwd=ROOT)
 
 
@@ -82,7 +82,7 @@ def main():
     out = os.path.join(ROOT, "dist", "DiscoFlowInstaller.exe")
     if os.path.exists(out):
         size_mb = os.path.getsize(out) / 1024 / 1024
-        print(f"\nDone → {out}  ({size_mb:.1f} MB)")
+        print(f"\nDone: {out}  ({size_mb:.1f} MB)")
     else:
         print("\nBuild may have failed — check output above.")
         sys.exit(1)
