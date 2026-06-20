@@ -21,11 +21,16 @@ local function read_json(path)
 end
 
 function M.send(request_table, callback)
+    M.send_long(request_table, callback, 5)
+end
+
+-- send_long: like send() but with a configurable timeout (seconds).
+-- Use for requests that may take a while (e.g., BPM detection from preview URL = ~15s).
+function M.send_long(request_table, callback, timeout_secs)
     local json_str = M.encode(request_table)
     write_json(REQUEST_FILE, json_str)
 
-    -- poll for response (max 5 seconds)
-    local deadline = os.clock() + 5
+    local deadline = os.clock() + (timeout_secs or 5)
     while os.clock() < deadline do
         local raw = read_json(RESPONSE_FILE)
         if raw then

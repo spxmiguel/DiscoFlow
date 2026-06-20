@@ -58,7 +58,7 @@ local function load_library()
 end
 
 local function load_services()
-    set_status("Detecting streaming apps...")
+    set_status("Detectando apps de streaming...")
     ipc.send({ action = "detect" }, function(resp)
         state.services = resp.services or {}
         state.screen = "services"
@@ -66,24 +66,44 @@ local function load_services()
     end)
 end
 
+local SEARCH_ACTIONS = {
+    ["Spotify"]       = "spotify_search",
+    ["Deezer"]        = "deezer_search",
+    ["Apple Music"]   = "apple_music_search",
+    ["Tidal"]         = "tidal_search",
+    ["YouTube Music"] = "youtube_music_search",
+    ["Amazon Music"]  = "amazon_music_search",
+}
+
+local PLAYLIST_ACTIONS = {
+    ["Spotify"] = { list = "spotify_playlists",       tracks = "spotify_playlist_tracks" },
+    ["Tidal"]   = { list = "tidal_playlists",         tracks = "tidal_playlist_tracks"   },
+}
+
 local function search(query)
     if not state.service or query == "" then return end
-    set_status("Searching...")
-    local action = state.service == "Spotify" and "spotify_search"
-               or state.service == "Deezer"  and "deezer_search"
-               or nil
-    if not action then return end
+    local action = SEARCH_ACTIONS[state.service]
+    if not action then
+        set_status("Servico nao suportado: " .. state.service)
+        return
+    end
+    set_status("Pesquisando...")
     ipc.send({ action = action, query = query }, function(resp)
+        if resp.error then
+            set_status("Erro: " .. resp.error)
+            return
+        end
         state.tracks = resp.tracks or {}
         state.screen = "results"
-        set_status(#state.tracks == 0 and "No results." or "")
+        set_status(#state.tracks == 0 and "Nenhum resultado." or "")
     end)
 end
 
 local function load_playlists()
-    if state.service ~= "Spotify" then return end
-    set_status("Loading playlists...")
-    ipc.send({ action = "spotify_playlists" }, function(resp)
+    local pa = PLAYLIST_ACTIONS[state.service]
+    if not pa then return end
+    set_status("Carregando playlists...")
+    ipc.send({ action = pa.list }, function(resp)
         state.playlists = resp.playlists or {}
         state.screen = "playlists"
         set_status("")
@@ -91,29 +111,25 @@ local function load_playlists()
 end
 
 local function load_playlist_tracks(playlist_id)
-    set_status("Loading playlist...")
-    ipc.send({ action = "spotify_playlist_tracks", playlist_id = playlist_id }, function(resp)
+    local pa = PLAYLIST_ACTIONS[state.service]
+    if not pa then return end
+    set_status("Carregando playlist...")
+    ipc.send({ action = pa.tracks, playlist_id = playlist_id }, function(resp)
         state.tracks = resp.tracks or {}
         state.screen = "results"
         set_status("")
     end)
 end
 
-local function play_track(track)
-    if not track.bpm then
-        set_status("BPM nao disponivel para esta faixa.")
-        return
-    end
-
-    -- open in streaming app (streaming sources only)
+local function do_play_track(track)
+    -- open in streaming app (Spotify only for now)
     if track.source ~= "local" then
         if state.service == "Spotify" and track.uri then
             ipc.send({ action = "spotify_play", uri = track.uri }, function() end)
         end
     end
 
-    -- inject BPM into the game's song config
-    -- Dead as Disco stores the active song config in a UObject accessible via UE4SS
+    -- inject BPM into game
     local ok = pcall(function()
         local mgr = UEHelpers.GetMusicManager()
         if mgr then
@@ -123,13 +139,40 @@ local function play_track(track)
     end)
 
     set_status(ok
-        and string.format("Now playing: %s — BPM set to %d", track.name, track.bpm)
-        or  string.format("BPM %d copied — paste it in the BPM field.", track.bpm))
+        and string.format("Tocando: %s — BPM definido para %d", track.name, track.bpm)
+        or  string.format("BPM %d copiado — cole no campo BPM.", track.bpm))
 
-    -- fallback: write to clipboard so user can paste manually
     UEHelpers.SetClipboardText(tostring(track.bpm))
-
     M.hide()
+end
+
+local function play_track(track)
+    -- BPM-on-demand: detect via iTunes preview before playing
+    if not track.bpm then
+        if track.source == "local" then
+            set_status("BPM nao disponivel para esta faixa.")
+            return
+        end
+        set_status("Detectando BPM... (alguns segundos)")
+        ipc.send_long(
+            { action = "bpm_from_preview",
+              url    = track.preview_url or "",
+              artist = track.artist or "",
+              name   = track.name   or "" },
+            function(resp)
+                if resp and resp.bpm and resp.bpm > 0 then
+                    track.bpm = resp.bpm
+                    do_play_track(track)
+                else
+                    set_status("Nao foi possivel detectar o BPM desta faixa.")
+                end
+            end,
+            25
+        )
+        return
+    end
+
+    do_play_track(track)
 end
 
 -- ── ImGui UI ─────────────────────────────────────────────────────────────────
@@ -216,26 +259,26 @@ function M.draw_services()
 end
 
 function M.draw_search()
-    ImGui.Text("Search a song or browse playlists:")
+    ImGui.Text("Buscar musica:")
     ImGui.Spacing()
 
     local changed, new_query = ImGui.InputText("##query", state.query, 256)
     if changed then state.query = new_query end
     ImGui.SameLine()
-    if ImGui.Button("Search") then search(state.query) end
+    if ImGui.Button("Buscar") then search(state.query) end
 
-    if state.service == "Spotify" then
+    if PLAYLIST_ACTIONS[state.service] then
         ImGui.Spacing()
-        if ImGui.Button("My Playlists", 480, 32) then load_playlists() end
+        if ImGui.Button("Minhas Playlists", 480, 32) then load_playlists() end
     end
 end
 
 function M.draw_results()
-    ImGui.Text(string.format("%d results", #state.tracks))
+    ImGui.Text(string.format("%d resultado(s)", #state.tracks))
     ImGui.Separator()
 
     for _, t in ipairs(state.tracks) do
-        local bpm_label = t.bpm and string.format(" [%d BPM]", t.bpm) or " [BPM ?]"
+        local bpm_label = t.bpm and string.format(" [%d BPM]", t.bpm) or " [BPM?]"
         local duration  = t.duration or ""
         local label     = string.format("%s — %s  %s  %s", t.name, t.artist, duration, bpm_label)
 
@@ -246,11 +289,11 @@ function M.draw_results()
 end
 
 function M.draw_playlists()
-    ImGui.Text("Your Spotify Playlists:")
+    ImGui.Text(string.format("Playlists — %s:", state.service or ""))
     ImGui.Separator()
 
     for _, p in ipairs(state.playlists) do
-        local label = string.format("%s  (%d tracks)", p.name, p.tracks)
+        local label = string.format("%s  (%d faixas)", p.name, p.tracks or 0)
         if ImGui.Button(label, 480, 28) then
             load_playlist_tracks(p.id)
         end

@@ -44,5 +44,7 @@ def detect_streaming_apps():
         if exe_running or path_exists:
             found.append({"name": name, "running": exe_running})
 
+    # YouTube Music works unauthenticated via ytmusicapi — always available
+    found.append({"name": "YouTube Music", "running": True})
     found.append({"name": "Local Files", "running": True})
     return found
