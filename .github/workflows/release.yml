@@ -1,0 +1,37 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build DiscoFlowInstaller.exe
+        run: python installer/build.py
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/DiscoFlowInstaller.exe
+          body: |
+            ## Installation
+
+            1. Download `DiscoFlowInstaller.exe` below.
+            2. Make sure [UE4SS](https://github.com/UE4SS-RE/RE-UE4SS/releases) is installed in Dead as Disco's `Binaries/Win64/` folder.
+            3. Run the installer.
+            4. Launch Dead as Disco and press **F6** in Free Play.
+
+            See the [README](https://github.com/${{ github.repository }}#readme) for Spotify setup and usage.

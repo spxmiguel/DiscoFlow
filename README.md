@@ -36,7 +36,8 @@ The overlay opens with **F6** in the Free Play screen.
 
 - Dead as Disco (Steam, Early Access)
 - [UE4SS](https://github.com/UE4SS-RE/RE-UE4SS/releases) installed in the game's `Binaries/Win64` folder
-- Python 3.10 or newer
+
+No Python required — everything is bundled in the installer.
 
 ## Installation
 
@@ -48,17 +49,14 @@ Download the latest release from the [UE4SS releases page](https://github.com/UE
 Dead as Disco/Binaries/Win64/
 ```
 
-**2. Run the DiscoFlow installer**
+**2. Download and run DiscoFlowInstaller.exe**
 
-```
-installer\install.bat
-```
+Grab the latest `DiscoFlowInstaller.exe` from the [Releases](../../releases/latest) page and run it.
 
 The installer will:
-- Locate Dead as Disco via the Steam registry
+- Locate Dead as Disco automatically via the Steam registry
 - Copy the mod into the UE4SS Mods folder
-- Install the Python backend to `%LOCALAPPDATA%\DiscoFlow\backend`
-- Install Python dependencies (`psutil`, `librosa`)
+- Install the backend to `%LOCALAPPDATA%\DiscoFlow`
 - Add the backend to Windows Startup so it runs automatically
 
 **3. Spotify setup (optional)**
@@ -104,11 +102,19 @@ Or in a terminal:
 python %LOCALAPPDATA%\DiscoFlow\backend\main.py
 ```
 
-## Local Development
+## Building from Source
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/DiscoFlow
+git clone https://github.com/spxmiguel/DiscoFlow
 cd DiscoFlow
+python installer/build.py
+```
+
+Output: `dist/DiscoFlowInstaller.exe`
+
+To run the backend directly during development:
+
+```bash
 pip install -r backend/requirements.txt
 python backend/main.py
 ```
@@ -134,19 +140,22 @@ DiscoFlow/
 │       ├── ui.lua       ImGui overlay — all screens and interactions
 │       └── ipc.lua      file-based IPC client + minimal JSON codec
 ├── installer/
-│   ├── install.py       installer logic
-│   └── install.bat      Windows entry point
+│   ├── install.py       tkinter GUI installer (bundled by PyInstaller)
+│   ├── DiscoFlow.spec   PyInstaller spec — bundles mod + backend.exe
+│   └── build.py         build script → dist/DiscoFlowInstaller.exe
 └── README.md
 ```
 
 ## Tech Stack
 
-- Python 3.10+
+- Python 3.11 (bundled — no install required)
+- PyInstaller (single .exe packaging)
 - UE4SS (Lua scripting + ImGui for Unreal Engine games)
 - Spotify Web API
 - Deezer Public API
 - librosa (local BPM detection)
 - psutil (process detection)
+- GitHub Actions (automated .exe builds on release)
 
 ## Roadmap
 
