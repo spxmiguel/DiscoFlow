@@ -206,14 +206,6 @@ end
 
 -- ── public ───────────────────────────────────────────────────────────────────
 
-function M.toggle()
-    if state.visible then
-        M.hide()
-    else
-        M.show()
-    end
-end
-
 function M.show()
     state.visible = true
     if #state.services == 0 then load_services() end
@@ -221,6 +213,10 @@ end
 
 function M.hide()
     state.visible = false
+end
+
+function M.toggle()
+    if state.visible then M.hide() else M.show() end
 end
 
 return M

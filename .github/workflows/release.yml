@@ -33,7 +33,15 @@ jobs:
             backend/main.py
 
       - name: Package mod.zip
-        run: Compress-Archive -Path mod\* -DestinationPath dist\mod.zip
+        run: |
+          New-Item -ItemType Directory -Path dist\mod_pkg\Scripts              -Force | Out-Null
+          New-Item -ItemType Directory -Path dist\mod_pkg\UE4SS_Signatures     -Force | Out-Null
+          Copy-Item mod\Scripts\main.lua             dist\mod_pkg\Scripts\
+          Copy-Item mod\Scripts\ui.lua               dist\mod_pkg\Scripts\
+          Copy-Item mod\Scripts\ipc.lua              dist\mod_pkg\Scripts\
+          Copy-Item mod\UE4SS_Signatures\*.lua       dist\mod_pkg\UE4SS_Signatures\
+          "" | Set-Content dist\mod_pkg\enabled.txt
+          Compress-Archive -Path dist\mod_pkg\* -DestinationPath dist\mod.zip
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
